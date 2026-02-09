@@ -1,50 +1,64 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Multiplayer Test</title>
-
+  <title>Local Multiplayer Test</title>
   <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
-
-  <script src="https://unpkg.com/networked-aframe@^0.10.0/dist/networked-aframe.min.js"></script>
+  
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/2.5.0/socket.io.slim.js"></script>
+  <script src="https://unpkg.com/networked-aframe@^0.12.0/dist/networked-aframe.min.js"></script>
 </head>
 
 <body>
   <a-scene
     networked-scene="
-      room: pianoRoom;
+      room: testRoom_12345;
+      adapter: wseasyrtc;
+      serverURL: https://nafs.dev/;
       debug: true;
-      adapter: easyrtc;
     ">
 
-    <!-- Player Template -->
-    <template id="avatar-template">
-      <a-entity>
-        <a-sphere color="blue" radius="0.15"></a-sphere>
-        <a-text
-          value="User"
-          position="0 0.3 0"
-          align="center">
-        </a-text>
-      </a-entity>
-    </template>
+    <a-assets>
+      <template id="avatar-template">
+        <a-entity>
+          <a-sphere color="blue" radius="0.15"></a-sphere>
+          <a-cone color="blue" rotation="90 0 0" position="0 0 -0.2" scale="0.1 0.1 0.1"></a-cone>
+        </a-entity>
+      </template>
+    </a-assets>
 
-    <!-- Local Player -->
     <a-entity
       id="player"
       camera
-      position="0 1.6 0"
+      wasd-controls
       look-controls
+      position="0 1.6 0"
       networked="template:#avatar-template;attachTemplateToLocal:false;">
     </a-entity>
 
-    <a-plane
-      position="0 0 -3"
-      rotation="-90 0 0"
-      width="10"
-      height="10"
-      color="#888">
-    </a-plane>
+    <a-plane position="0 0 0" rotation="-90 0 0" width="10" height="10" color="#777"></a-plane>
+    <a-sky color="#87CEEB"></a-sky>
 
   </a-scene>
+
+  <div id="player-count" style="position:fixed; top:20px; left:20px; color:white; background:black; padding:10px; font-family:sans-serif; z-index:10;">
+    Players in room: 1 (Just You)
+  </div>
+
+  <script>
+    // This script updates the text when someone joins or leaves
+    const countDisplay = document.getElementById('player-count');
+    
+    document.body.addEventListener('clientConnected', function (evt) {
+        // We add 1 to include ourselves
+        const numPlayers = Object.keys(NAF.connection.getConnectedClients()).length + 1;
+        countDisplay.innerText = "Players in room: " + numPlayers;
+        countDisplay.style.background = "green";
+    });
+
+    document.body.addEventListener('clientDisconnected', function (evt) {
+        const numPlayers = Object.keys(NAF.connection.getConnectedClients()).length + 1;
+        countDisplay.innerText = "Players in room: " + numPlayers;
+    });
+  </script>
 </body>
 </html>
