@@ -1,64 +1,425 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>Local Multiplayer Test</title>
-  <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
-  
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/2.5.0/socket.io.slim.js"></script>
-  <script src="https://unpkg.com/networked-aframe@^0.12.0/dist/networked-aframe.min.js"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MIDI Piano Input Detector</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0f0f1a;
+      color: #e0e0ff;
+      font-family: 'Segoe UI', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 30px 20px;
+    }
+
+    h1 {
+      font-size: 1.8rem;
+      margin-bottom: 6px;
+      color: #a78bfa;
+    }
+
+    p.subtitle {
+      color: #888;
+      font-size: 0.9rem;
+      margin-bottom: 30px;
+    }
+
+    /* Status Bar */
+    #status {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: #1a1a2e;
+      border: 1px solid #2a2a4a;
+      border-radius: 10px;
+      padding: 12px 20px;
+      margin-bottom: 24px;
+      font-size: 0.95rem;
+      width: 100%;
+      max-width: 700px;
+    }
+
+    #status-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: #ef4444;
+      transition: background 0.3s;
+    }
+    #status-dot.connected { background: #22c55e; }
+    #status-dot.waiting   { background: #f59e0b; animation: pulse 1s infinite; }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.3; }
+    }
+
+    /* Device List */
+    #devices-box {
+      background: #1a1a2e;
+      border: 1px solid #2a2a4a;
+      border-radius: 10px;
+      padding: 16px 20px;
+      width: 100%;
+      max-width: 700px;
+      margin-bottom: 24px;
+    }
+
+    #devices-box h2 { font-size: 1rem; color: #a78bfa; margin-bottom: 10px; }
+    #device-list { font-size: 0.9rem; color: #aaa; }
+    #device-list li { padding: 4px 0; list-style: none; }
+    #device-list li::before { content: "🎹 "; }
+
+    /* Current Note Display */
+    #note-display {
+      background: #1a1a2e;
+      border: 1px solid #2a2a4a;
+      border-radius: 14px;
+      padding: 30px;
+      width: 100%;
+      max-width: 700px;
+      text-align: center;
+      margin-bottom: 24px;
+    }
+
+    #note-name {
+      font-size: 5rem;
+      font-weight: bold;
+      color: #a78bfa;
+      line-height: 1;
+      transition: color 0.1s;
+      min-height: 90px;
+    }
+
+    #note-name.active { color: #22c55e; }
+
+    #note-details {
+      display: flex;
+      justify-content: center;
+      gap: 30px;
+      margin-top: 16px;
+      font-size: 0.9rem;
+      color: #888;
+    }
+
+    #note-details span strong { color: #e0e0ff; }
+
+    /* Mini Piano */
+    #piano-wrap {
+      background: #1a1a2e;
+      border: 1px solid #2a2a4a;
+      border-radius: 14px;
+      padding: 20px;
+      width: 100%;
+      max-width: 700px;
+      margin-bottom: 24px;
+      overflow-x: auto;
+    }
+
+    #piano-wrap h2 { font-size: 1rem; color: #a78bfa; margin-bottom: 14px; }
+
+    #piano {
+      display: flex;
+      position: relative;
+      height: 100px;
+      gap: 2px;
+      width: max-content;
+    }
+
+    .white-key {
+      width: 28px;
+      height: 100px;
+      background: #f0f0f0;
+      border: 1px solid #999;
+      border-radius: 0 0 4px 4px;
+      position: relative;
+      cursor: default;
+      transition: background 0.05s;
+      flex-shrink: 0;
+    }
+
+    .white-key.active { background: #86efac; }
+
+    .black-key {
+      width: 18px;
+      height: 62px;
+      background: #1a1a1a;
+      border-radius: 0 0 3px 3px;
+      position: absolute;
+      top: 0;
+      z-index: 2;
+      cursor: default;
+      transition: background 0.05s;
+    }
+
+    .black-key.active { background: #4ade80; }
+
+    /* Log */
+    #log-box {
+      background: #1a1a2e;
+      border: 1px solid #2a2a4a;
+      border-radius: 10px;
+      padding: 16px 20px;
+      width: 100%;
+      max-width: 700px;
+    }
+
+    #log-box h2 { font-size: 1rem; color: #a78bfa; margin-bottom: 10px; }
+
+    #log {
+      font-family: 'Courier New', monospace;
+      font-size: 0.8rem;
+      color: #aaa;
+      max-height: 160px;
+      overflow-y: auto;
+    }
+
+    .log-entry { padding: 2px 0; border-bottom: 1px solid #1f1f35; }
+    .log-on  { color: #86efac; }
+    .log-off { color: #f87171; }
+
+    /* Data JSON box (for A-Frame integration) */
+    #json-box {
+      background: #0a0a14;
+      border: 1px solid #2a2a4a;
+      border-radius: 10px;
+      padding: 16px 20px;
+      width: 100%;
+      max-width: 700px;
+      margin-top: 24px;
+      font-family: 'Courier New', monospace;
+      font-size: 0.82rem;
+      color: #7dd3fc;
+    }
+
+    #json-box h2 { font-family: 'Segoe UI', sans-serif; font-size: 1rem; color: #a78bfa; margin-bottom: 10px; }
+    #json-output { white-space: pre; }
+  </style>
 </head>
-
 <body>
-  <a-scene
-    networked-scene="
-      room: testRoom_12345;
-      adapter: wseasyrtc;
-      serverURL: https://nafs.dev/;
-      debug: true;
-    ">
 
-    <a-assets>
-      <template id="avatar-template">
-        <a-entity>
-          <a-sphere color="blue" radius="0.15"></a-sphere>
-          <a-cone color="blue" rotation="90 0 0" position="0 0 -0.2" scale="0.1 0.1 0.1"></a-cone>
-        </a-entity>
-      </template>
-    </a-assets>
+  <h1>🎹 MIDI Piano Detector</h1>
+  <p class="subtitle">Connect your MIDI keyboard and start playing</p>
 
-    <a-entity
-      id="player"
-      camera
-      wasd-controls
-      look-controls
-      position="0 1.6 0"
-      networked="template:#avatar-template;attachTemplateToLocal:false;">
-    </a-entity>
-
-    <a-plane position="0 0 0" rotation="-90 0 0" width="10" height="10" color="#777"></a-plane>
-    <a-sky color="#87CEEB"></a-sky>
-
-  </a-scene>
-
-  <div id="player-count" style="position:fixed; top:20px; left:20px; color:white; background:black; padding:10px; font-family:sans-serif; z-index:10;">
-    Players in room: 1 (Just You)
+  <div id="status">
+    <div id="status-dot" class="waiting"></div>
+    <span id="status-text">Requesting MIDI access…</span>
   </div>
 
-  <script>
-    // This script updates the text when someone joins or leaves
-    const countDisplay = document.getElementById('player-count');
-    
-    document.body.addEventListener('clientConnected', function (evt) {
-        // We add 1 to include ourselves
-        const numPlayers = Object.keys(NAF.connection.getConnectedClients()).length + 1;
-        countDisplay.innerText = "Players in room: " + numPlayers;
-        countDisplay.style.background = "green";
-    });
+  <div id="devices-box">
+    <h2>Connected MIDI Devices</h2>
+    <ul id="device-list"><li style="color:#666">No devices found yet</li></ul>
+  </div>
 
-    document.body.addEventListener('clientDisconnected', function (evt) {
-        const numPlayers = Object.keys(NAF.connection.getConnectedClients()).length + 1;
-        countDisplay.innerText = "Players in room: " + numPlayers;
-    });
-  </script>
+  <div id="note-display">
+    <div id="note-name">—</div>
+    <div id="note-details">
+      <span>MIDI#: <strong id="d-midi">—</strong></span>
+      <span>Octave: <strong id="d-oct">—</strong></span>
+      <span>Velocity: <strong id="d-vel">—</strong></span>
+      <span>Frequency: <strong id="d-freq">—</strong></span>
+    </div>
+  </div>
+
+  <div id="piano-wrap">
+    <h2>Visual Keyboard (C3 – B5)</h2>
+    <div id="piano"></div>
+  </div>
+
+  <div id="log-box">
+    <h2>Event Log</h2>
+    <div id="log"></div>
+  </div>
+
+  <div id="json-box">
+    <h2>Live Data (use this in A-Frame)</h2>
+    <div id="json-output">{}</div>
+  </div>
+
+<script>
+// ─── Note helpers ─────────────────────────────────────────────────────────────
+const NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+
+function midiToNote(midi) {
+  const name   = NOTE_NAMES[midi % 12];
+  const octave = Math.floor(midi / 12) - 1;
+  return { name, octave, full: `${name}${octave}` };
+}
+
+function midiToFreq(midi) {
+  return (440 * Math.pow(2, (midi - 69) / 12)).toFixed(2);
+}
+
+// ─── Piano keyboard builder (C3=48 to B5=83) ─────────────────────────────────
+const PIANO_START = 48; // C3
+const PIANO_END   = 83; // B5
+const BLACK_OFFSETS = { 1: 18, 3: 46, 6: 102, 8: 130, 10: 158 }; // px offsets within octave
+
+const pianoEl = document.getElementById('piano');
+const keyElements = {}; // midi -> DOM element
+
+function buildPiano() {
+  let whiteX = 0;
+  for (let midi = PIANO_START; midi <= PIANO_END; midi++) {
+    const pos = midi % 12;
+    const isBlack = [1,3,6,8,10].includes(pos);
+
+    const key = document.createElement('div');
+    if (isBlack) {
+      key.className = 'black-key';
+      // position relative to last white key group
+      key.style.left = (whiteX * 30 - 9) + 'px';
+      key.style.marginLeft = '-9px';
+      pianoEl.appendChild(key);
+    } else {
+      key.className = 'white-key';
+      pianoEl.appendChild(key);
+      whiteX++;
+    }
+    keyElements[midi] = key;
+  }
+}
+
+buildPiano();
+
+// ─── Live MIDI state (expose globally for A-Frame) ────────────────────────────
+window.midiState = {
+  activeNotes: {},   // midi -> { name, octave, velocity, frequency }
+  lastNote: null,
+  lastEvent: null
+};
+
+function updateJSON() {
+  document.getElementById('json-output').textContent =
+    JSON.stringify(window.midiState, null, 2);
+}
+
+// ─── UI updates ───────────────────────────────────────────────────────────────
+let noteOffTimers = {};
+
+function noteOn(midi, velocity) {
+  const note = midiToNote(midi);
+  const freq = midiToFreq(midi);
+
+  window.midiState.activeNotes[midi] = { ...note, velocity, frequency: parseFloat(freq) };
+  window.midiState.lastNote  = { ...note, velocity, frequency: parseFloat(freq) };
+  window.midiState.lastEvent = 'noteOn';
+  updateJSON();
+
+  // Big display
+  const nameEl = document.getElementById('note-name');
+  nameEl.textContent = note.full;
+  nameEl.classList.add('active');
+  document.getElementById('d-midi').textContent = midi;
+  document.getElementById('d-oct').textContent  = note.octave;
+  document.getElementById('d-vel').textContent  = velocity;
+  document.getElementById('d-freq').textContent = freq + ' Hz';
+
+  // Piano key
+  if (keyElements[midi]) keyElements[midi].classList.add('active');
+
+  // Clear pending off-timer for this note
+  if (noteOffTimers[midi]) clearTimeout(noteOffTimers[midi]);
+
+  // Log
+  addLog(`▶ NOTE ON  — ${note.full.padEnd(4)} | MIDI ${midi} | Vel ${velocity} | ${freq} Hz`, 'log-on');
+}
+
+function noteOff(midi) {
+  const note = midiToNote(midi);
+
+  delete window.midiState.activeNotes[midi];
+  window.midiState.lastEvent = 'noteOff';
+  updateJSON();
+
+  if (keyElements[midi]) keyElements[midi].classList.remove('active');
+
+  // Remove big display after short delay (so quick notes are visible)
+  noteOffTimers[midi] = setTimeout(() => {
+    if (Object.keys(window.midiState.activeNotes).length === 0) {
+      document.getElementById('note-name').textContent = '—';
+      document.getElementById('note-name').classList.remove('active');
+      document.getElementById('d-midi').textContent = '—';
+      document.getElementById('d-oct').textContent  = '—';
+      document.getElementById('d-vel').textContent  = '—';
+      document.getElementById('d-freq').textContent = '—';
+    }
+  }, 300);
+
+  addLog(`■ NOTE OFF — ${note.full.padEnd(4)} | MIDI ${midi}`, 'log-off');
+}
+
+function addLog(msg, cls) {
+  const log = document.getElementById('log');
+  const ts  = new Date().toLocaleTimeString();
+  const div = document.createElement('div');
+  div.className = `log-entry ${cls}`;
+  div.textContent = `[${ts}] ${msg}`;
+  log.prepend(div);
+  if (log.children.length > 60) log.lastChild.remove();
+}
+
+// ─── MIDI setup ───────────────────────────────────────────────────────────────
+function onMIDIMessage(event) {
+  const [status, note, velocity] = event.data;
+  const type = status & 0xf0;
+
+  if (type === 0x90 && velocity > 0) {
+    noteOn(note, velocity);
+  } else if (type === 0x80 || (type === 0x90 && velocity === 0)) {
+    noteOff(note);
+  }
+  // You can handle other MIDI messages (CC, pitch bend, etc.) here
+}
+
+function setupMIDI(access) {
+  const inputs = [...access.inputs.values()];
+  const listEl = document.getElementById('device-list');
+
+  function refreshDevices() {
+    const ins = [...access.inputs.values()];
+    listEl.innerHTML = ins.length
+      ? ins.map(i => `<li>${i.name}</li>`).join('')
+      : '<li style="color:#666">No devices found</li>';
+
+    ins.forEach(input => { input.onmidimessage = onMIDIMessage; });
+
+    const dot  = document.getElementById('status-dot');
+    const text = document.getElementById('status-text');
+    if (ins.length > 0) {
+      dot.className  = 'connected';
+      text.textContent = `${ins.length} device(s) connected — start playing!`;
+    } else {
+      dot.className  = 'waiting';
+      text.textContent = 'No MIDI devices detected. Plug in your keyboard.';
+    }
+  }
+
+  access.onstatechange = refreshDevices;
+  refreshDevices();
+}
+
+function onMIDIFailure(err) {
+  document.getElementById('status-dot').className = '';
+  document.getElementById('status-dot').style.background = '#ef4444';
+  document.getElementById('status-text').textContent =
+    `MIDI access denied: ${err.message}. Please allow MIDI permissions.`;
+}
+
+if (navigator.requestMIDIAccess) {
+  navigator.requestMIDIAccess({ sysex: false })
+    .then(setupMIDI)
+    .catch(onMIDIFailure);
+} else {
+  document.getElementById('status-text').textContent =
+    '⚠ Web MIDI API not supported. Use Chrome or Edge.';
+}
+</script>
 </body>
 </html>
