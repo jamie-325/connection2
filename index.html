@@ -1,114 +1,325 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <meta charset="utf-8">
-    <title>Virtuoso - VR & AR Hybrid</title>
-    <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
-    <style>
-        body { margin: 0; overflow: hidden; background: #000; }
-        /* Ensuring the UI is visible on desktop for debugging */
-        #desktop-ui { 
-            position: absolute; top: 10px; left: 10px; z-index: 100; 
-            background: rgba(0,0,0,0.8); padding: 10px; border: 1px solid #39FF14;
-            color: white; font-family: sans-serif;
-        }
-    </style>
+<meta charset="utf-8">
+<title>VR Sync Test</title>
+<script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  #hud {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 999;
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 16px;
+    background: rgba(0,0,0,0.85);
+    font-family: 'Courier New', monospace;
+    font-size: 0.78rem;
+    pointer-events: none;
+  }
+  #hud > * { pointer-events: all; }
+
+  .pill {
+    display: flex; align-items: center; gap: 6px;
+    padding: 4px 12px;
+    border-radius: 20px;
+    border: 1px solid #333;
+    background: rgba(255,255,255,0.04);
+    color: #aaa;
+    font-size: 0.72rem;
+  }
+  .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: #555;
+    flex-shrink: 0;
+    transition: background 0.3s;
+  }
+  .dot.on  { background: #22c55e; box-shadow: 0 0 6px #22c55e; }
+  .dot.err { background: #ef4444; }
+
+  .btn {
+    padding: 5px 14px;
+    border: 1px solid #444;
+    border-radius: 4px;
+    background: #111;
+    color: #e0e0e0;
+    font: 700 0.72rem 'Courier New', monospace;
+    cursor: pointer;
+    letter-spacing: 0.05em;
+    transition: all 0.1s;
+  }
+  .btn:hover { background: #222; border-color: #666; }
+  .btn.active { border-color: #22c55e; color: #22c55e; }
+
+  #log {
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 999;
+    padding: 6px 16px;
+    background: rgba(0,0,0,0.8);
+    font: 0.68rem 'Courier New', monospace;
+    color: #555;
+    pointer-events: none;
+  }
+  #log span { color: #facc15; }
+</style>
 </head>
 <body>
 
-    <div id="desktop-ui">
-        <b>HYBRID MODE ACTIVE</b><br>
-        Use the Quest buttons: <br>
-        [VR] for Void | [AR] for Passthrough
-    </div>
+<!-- HUD -->
+<div id="hud">
+  <div class="pill">
+    <div class="dot" id="ws-dot"></div>
+    <span id="ws-label">connecting…</span>
+  </div>
 
-    <a-scene 
-        id="scene"
-        webxr="optionalFeatures: passthrough, local-floor; referenceSpaceType: local-floor"
-        renderer="alpha: true; colorManagement: true; antialias: true;"
-        xr-mode-ui="XRMode: xr;" 
-        background="color: #010102">
-        
-        <a-assets>
-            <a-mixin id="vr-btn" 
-                     geometry="primitive: plane; width: 0.6; height: 0.22" 
-                     material="color: #111; shader: flat"
-                     text="align: center; width: 2.5; color: white"></a-mixin>
-        </a-assets>
+  <div class="pill">
+    <div class="dot on" style="background:#38bdf8;box-shadow:0 0 6px #38bdf8"></div>
+    <span id="peer-count">0 peers</span>
+  </div>
 
-        <a-entity laser-controls="hand: right" raycaster="objects: .clickable; far: 20"></a-entity>
+  <!-- Cube colour pickers -->
+  <button class="btn" onclick="send('cubeColor','#e74c3c')" style="border-color:#e74c3c;color:#e74c3c;">RED</button>
+  <button class="btn" onclick="send('cubeColor','#3498db')" style="border-color:#3498db;color:#3498db;">BLUE</button>
+  <button class="btn" onclick="send('cubeColor','#2ecc71')" style="border-color:#2ecc71;color:#2ecc71;">GREEN</button>
+  <button class="btn" onclick="send('cubeColor','#f39c12')" style="border-color:#f39c12;color:#f39c12;">ORANGE</button>
+  <button class="btn" onclick="send('cubeColor','#9b59b6')" style="border-color:#9b59b6;color:#9b59b6;">PURPLE</button>
 
-        <a-entity id="vr-menu" position="-3.5 1.5 -3.0" rotation="0 70 0">
-            <a-text value="ENVIRONMENT CONTROLS" position="0 0.8 0" align="center" color="#39FF14" width="6"></a-text>
-            
-            <a-entity class="clickable" mixin="vr-btn" position="0 0.4 0" 
-                      text="value: SWITCH TO PASSTHROUGH" onclick="setMode('ar')"></a-entity>
-            <a-entity class="clickable" mixin="vr-btn" position="0 0.1 0" 
-                      text="value: SWITCH TO VOID (VR)" onclick="setMode('vr')"></a-entity>
+  <!-- Toggle rotation -->
+  <button class="btn" id="rot-btn" onclick="toggleRotation()">⟳ SPIN: ON</button>
 
-            <a-text value="SCALES" position="0 -0.3 0" align="center" color="#aaa" width="4"></a-text>
-            <a-entity class="clickable" mixin="vr-btn" position="0 -0.55 0" text="value: C MAJOR" onclick="selectScale('cMajor')"></a-entity>
-            
-            <a-entity class="clickable" mixin="vr-btn" position="0 -1.2 0" material="color: #500" text="value: EXIT SESSION" onclick="exitSession()"></a-entity>
-        </a-entity>
+  <!-- Sky colour -->
+  <button class="btn" onclick="send('skyColor','#1a1a2e')">SKY: NIGHT</button>
+  <button class="btn" onclick="send('skyColor','#0f3460')">SKY: DEEP</button>
+  <button class="btn" onclick="send('skyColor','#2d6a4f')">SKY: FOREST</button>
+</div>
 
-        <a-entity id="piano-rig" position="0 0.5 -1.8">
-            <a-entity id="rolls"></a-entity>
-            <a-entity id="keys"></a-entity>
-        </a-entity>
+<!-- Status bar -->
+<div id="log">Waiting for server… <span id="last-event"></span></div>
 
-        <a-camera position="0 1.6 0"></a-camera>
-    </a-scene>
 
-    <script>
-        const sceneEl = document.querySelector('a-scene');
+<!-- ════════════════════════════════ A-FRAME SCENE ════ -->
+<a-scene xr-mode-ui="enabled: true">
 
-        // This logic detects how the user entered the scene
-        sceneEl.addEventListener('enter-vr', function () {
-            if (sceneEl.is('ar-mode')) {
-                console.log("Entered AR Mode");
-                setMode('ar');
-            } else {
-                console.log("Entered VR Mode");
-                setMode('vr');
-            }
-        });
+  <a-camera position="0 1.6 4">
+    <a-cursor raycaster="objects: .clickable"
+      geometry="primitive:ring; radiusInner:0.01; radiusOuter:0.016"
+      material="color:#facc15; shader:flat; opacity:0.9">
+    </a-cursor>
+  </a-camera>
 
-        function setMode(mode) {
-            if (mode === 'ar') {
-                // Transparency allows the Quest camera feed to show
-                sceneEl.removeAttribute('background');
-                // Optional: Make keys slightly transparent to see real fingers better
-                document.getElementById('keys').setAttribute('opacity', '0.8');
-            } else {
-                // Restore the pitch-black VR environment
-                sceneEl.setAttribute('background', 'color: #010102');
-                document.getElementById('keys').setAttribute('opacity', '1.0');
-            }
-        }
+  <!-- VR controllers -->
+  <a-entity laser-controls="hand:left"
+    raycaster="objects:.clickable; far:10; showLine:true; lineColor:#facc15; lineOpacity:0.7">
+  </a-entity>
+  <a-entity laser-controls="hand:right"
+    raycaster="objects:.clickable; far:10; showLine:true; lineColor:#fff; lineOpacity:0.7">
+  </a-entity>
 
-        function exitSession() {
-            sceneEl.exitVR();
-        }
+  <!-- The shared cube — clicking it cycles its colour -->
+  <a-box id="shared-cube"
+    class="clickable"
+    position="0 1.5 -3"
+    width="1" height="1" depth="1"
+    color="#e74c3c"
+    animation="property:rotation; to:0 360 0; dur:4000; loop:true; easing:linear">
+  </a-box>
 
-        function buildKeys() {
-            let curX = 0;
-            const keysEl = document.getElementById('keys');
-            for(let n=21; n<=108; n++) {
-                const isB = [1,3,6,8,10].includes(n%12);
-                const k = document.createElement('a-box');
-                k.setAttribute('width', isB ? 0.045 : 0.08);
-                k.setAttribute('height', isB ? 0.12 : 0.08);
-                k.setAttribute('depth', isB ? 0.4 : 0.7);
-                k.setAttribute('material', `shader: flat; color: ${isB ? '#111' : '#fff'}`);
-                k.setAttribute('position', `${curX} 0 ${isB ? -0.15 : 0}`);
-                keysEl.appendChild(k);
-                if(!isB) curX += 0.085;
-            }
-            keysEl.setAttribute('position', `${-(curX/2)} 0 0`);
-        }
+  <!-- Label above cube -->
+  <a-text id="cube-label"
+    value="CLICK ME"
+    position="0 2.3 -3"
+    align="center"
+    color="#ffffff"
+    width="4">
+  </a-text>
 
-        window.onload = buildKeys;
-    </script>
+  <!-- Connection status sphere (green=connected, red=disconnected) -->
+  <a-sphere id="status-sphere"
+    position="-3 1.5 -4"
+    radius="0.2"
+    color="#ef4444">
+  </a-sphere>
+  <a-text value="SYNC STATUS"
+    position="-3 1.9 -4"
+    align="center" color="#aaa" width="3">
+  </a-text>
+
+  <!-- Peer count display in 3D -->
+  <a-text id="vr-peer-count"
+    value="0 peers"
+    position="3 1.9 -4"
+    align="center" color="#38bdf8" width="4">
+  </a-text>
+
+  <!-- Colour buttons in 3D (for VR use) -->
+  <a-box class="clickable" id="vr-red"
+    position="-1.5 0.4 -3" width="0.5" height="0.3" depth="0.1"
+    color="#e74c3c"></a-box>
+  <a-text value="RED" position="-1.5 0.45 -2.94" align="center" color="#fff" width="1.5"></a-text>
+
+  <a-box class="clickable" id="vr-blue"
+    position="-0.8 0.4 -3" width="0.5" height="0.3" depth="0.1"
+    color="#3498db"></a-box>
+  <a-text value="BLUE" position="-0.8 0.45 -2.94" align="center" color="#fff" width="1.5"></a-text>
+
+  <a-box class="clickable" id="vr-green"
+    position="-0.1 0.4 -3" width="0.5" height="0.3" depth="0.1"
+    color="#2ecc71"></a-box>
+  <a-text value="GREEN" position="-0.1 0.45 -2.94" align="center" color="#fff" width="1.5"></a-text>
+
+  <a-box class="clickable" id="vr-orange"
+    position=" 0.6 0.4 -3" width="0.5" height="0.3" depth="0.1"
+    color="#f39c12"></a-box>
+  <a-text value="ORANGE" position=" 0.6 0.45 -2.94" align="center" color="#fff" width="1.5"></a-text>
+
+  <a-box class="clickable" id="vr-purple"
+    position=" 1.3 0.4 -3" width="0.5" height="0.3" depth="0.1"
+    color="#9b59b6"></a-box>
+  <a-text value="PURPLE" position=" 1.3 0.45 -2.94" align="center" color="#fff" width="1.5"></a-text>
+
+  <!-- Floor -->
+  <a-plane rotation="-90 0 0" width="20" height="20"
+    material="color:#0d0d1a; roughness:0.9">
+  </a-plane>
+
+  <a-sky id="shared-sky" color="#1a1a2e"></a-sky>
+
+</a-scene>
+
+
+<script>
+// ─────────────────────────────────────────────────────────────
+//  WebSocket sync
+//  The server address is just window.location — no config needed.
+//  Works on localhost AND on your DuckDNS domain.
+// ─────────────────────────────────────────────────────────────
+
+const WS_URL = `ws://${location.hostname}:${location.port || 3000}`;
+
+let ws, reconnectTimer;
+const COLOURS = ['#e74c3c','#3498db','#2ecc71','#f39c12','#9b59b6','#1abc9c','#e67e22'];
+let colourIdx = 0;
+
+// DOM / A-Frame element refs
+const cube        = document.getElementById('shared-cube');
+const sky         = document.getElementById('shared-sky');
+const statusSph   = document.getElementById('status-sphere');
+const vrPeerCount = document.getElementById('vr-peer-count');
+const wsDot       = document.getElementById('ws-dot');
+const wsLabel     = document.getElementById('ws-label');
+const peerCount   = document.getElementById('peer-count');
+const lastEvent   = document.getElementById('last-event');
+const rotBtn      = document.getElementById('rot-btn');
+
+// ── Apply state received from server ─────────────────────────
+function applyState(data) {
+  if (data.cubeColor    !== undefined) setCubeColor(data.cubeColor);
+  if (data.cubeRotating !== undefined) setRotation(data.cubeRotating);
+  if (data.skyColor     !== undefined) setSkyColor(data.skyColor);
+}
+
+function setCubeColor(color) {
+  cube.setAttribute('color', color);
+  logEvent(`cube → ${color}`);
+}
+
+function setRotation(on) {
+  cube.setAttribute('animation', on
+    ? 'property:rotation; to:0 360 0; dur:4000; loop:true; easing:linear'
+    : 'property:rotation; to:0 0 0; dur:300; loop:false');
+  rotBtn.textContent = `⟳ SPIN: ${on ? 'ON' : 'OFF'}`;
+  rotBtn.classList.toggle('active', on);
+}
+
+function setSkyColor(color) {
+  sky.setAttribute('color', color);
+  logEvent(`sky → ${color}`);
+}
+
+function logEvent(msg) {
+  lastEvent.textContent = msg;
+}
+
+// ── Send a state update to the server ────────────────────────
+function send(key, value) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  ws.send(JSON.stringify({ type: 'update', data: { [key]: value } }));
+  // Apply locally immediately (optimistic update)
+  applyState({ [key]: value });
+}
+
+function toggleRotation() {
+  const current = cube.getAttribute('animation');
+  const isOn = current && current.includes('loop:true');
+  send('cubeRotating', !isOn);
+}
+
+// ── Connect / reconnect loop ─────────────────────────────────
+function connect() {
+  ws = new WebSocket(WS_URL);
+
+  ws.onopen = () => {
+    wsDot.className = 'dot on';
+    wsLabel.textContent = 'connected';
+    statusSph.setAttribute('color', '#22c55e');
+    logEvent('connected to server');
+    clearTimeout(reconnectTimer);
+  };
+
+  ws.onmessage = ({ data }) => {
+    let msg;
+    try { msg = JSON.parse(data); } catch { return; }
+
+    if (msg.type === 'init') {
+      // Full state on first connect
+      applyState(msg.state);
+      updatePeerCount(msg.state.clients);
+    }
+
+    if (msg.type === 'update') {
+      // Partial update from another peer
+      applyState(msg.data);
+      logEvent(`peer update: ${JSON.stringify(msg.data)}`);
+    }
+
+    if (msg.type === 'clients') {
+      updatePeerCount(msg.count);
+    }
+  };
+
+  ws.onclose = () => {
+    wsDot.className = 'dot err';
+    wsLabel.textContent = 'disconnected — retrying…';
+    statusSph.setAttribute('color', '#ef4444');
+    reconnectTimer = setTimeout(connect, 2000);
+  };
+
+  ws.onerror = () => {
+    wsDot.className = 'dot err';
+    wsLabel.textContent = 'error';
+  };
+}
+
+function updatePeerCount(n) {
+  const label = `${n} peer${n === 1 ? '' : 's'}`;
+  peerCount.textContent = label;
+  vrPeerCount.setAttribute('text', 'value', label);
+}
+
+// ── Clicking the shared cube cycles its colour ───────────────
+cube.addEventListener('click', () => {
+  colourIdx = (colourIdx + 1) % COLOURS.length;
+  send('cubeColor', COLOURS[colourIdx]);
+});
+
+// ── VR colour button wiring ───────────────────────────────────
+document.getElementById('vr-red'   ).addEventListener('click', () => send('cubeColor', '#e74c3c'));
+document.getElementById('vr-blue'  ).addEventListener('click', () => send('cubeColor', '#3498db'));
+document.getElementById('vr-green' ).addEventListener('click', () => send('cubeColor', '#2ecc71'));
+document.getElementById('vr-orange').addEventListener('click', () => send('cubeColor', '#f39c12'));
+document.getElementById('vr-purple').addEventListener('click', () => send('cubeColor', '#9b59b6'));
+
+// ── Go ────────────────────────────────────────────────────────
+connect();
+</script>
 </body>
 </html>
