@@ -2,25 +2,32 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Piano AR - True Passthrough</title>
+    <title>Virtuoso - VR & AR Hybrid</title>
     <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
     <style>
         body { margin: 0; overflow: hidden; background: #000; }
+        /* Ensuring the UI is visible on desktop for debugging */
         #desktop-ui { 
             position: absolute; top: 10px; left: 10px; z-index: 100; 
             background: rgba(0,0,0,0.8); padding: 10px; border: 1px solid #39FF14;
-            color: white; pointer-events: auto;
+            color: white; font-family: sans-serif;
         }
     </style>
 </head>
 <body>
 
+    <div id="desktop-ui">
+        <b>HYBRID MODE ACTIVE</b><br>
+        Use the Quest buttons: <br>
+        [VR] for Void | [AR] for Passthrough
+    </div>
+
     <a-scene 
         id="scene"
         webxr="optionalFeatures: passthrough, local-floor; referenceSpaceType: local-floor"
-        renderer="alpha: true; colorManagement: true;"
-        xr-mode-ui="XRMode: ar; enterAREnabled: true;"
-        background="color: #000">
+        renderer="alpha: true; colorManagement: true; antialias: true;"
+        xr-mode-ui="XRMode: xr;" 
+        background="color: #010102">
         
         <a-assets>
             <a-mixin id="vr-btn" 
@@ -32,14 +39,17 @@
         <a-entity laser-controls="hand: right" raycaster="objects: .clickable; far: 20"></a-entity>
 
         <a-entity id="vr-menu" position="-3.5 1.5 -3.0" rotation="0 70 0">
-            <a-text value="PIANO AR CONTROLS" position="0 0.8 0" align="center" color="#39FF14" width="6"></a-text>
+            <a-text value="ENVIRONMENT CONTROLS" position="0 0.8 0" align="center" color="#39FF14" width="6"></a-text>
             
             <a-entity class="clickable" mixin="vr-btn" position="0 0.4 0" 
-                      text="value: HIDE BACKGROUND" onclick="setPassthrough(true)"></a-entity>
+                      text="value: SWITCH TO PASSTHROUGH" onclick="setMode('ar')"></a-entity>
             <a-entity class="clickable" mixin="vr-btn" position="0 0.1 0" 
-                      text="value: SHOW BACKGROUND" onclick="setPassthrough(false)"></a-entity>
+                      text="value: SWITCH TO VOID (VR)" onclick="setMode('vr')"></a-entity>
 
-            <a-entity class="clickable" mixin="vr-btn" position="0 -0.5 0" material="color: #500" text="value: STOP" onclick="stopAll()"></a-entity>
+            <a-text value="SCALES" position="0 -0.3 0" align="center" color="#aaa" width="4"></a-text>
+            <a-entity class="clickable" mixin="vr-btn" position="0 -0.55 0" text="value: C MAJOR" onclick="selectScale('cMajor')"></a-entity>
+            
+            <a-entity class="clickable" mixin="vr-btn" position="0 -1.2 0" material="color: #500" text="value: EXIT SESSION" onclick="exitSession()"></a-entity>
         </a-entity>
 
         <a-entity id="piano-rig" position="0 0.5 -1.8">
@@ -51,26 +61,35 @@
     </a-scene>
 
     <script>
-        // This function handles the transparency of the virtual world
-        function setPassthrough(active) {
-            const sceneEl = document.querySelector('a-scene');
-            if (active) {
-                // Remove the background color so the AR camera feed is visible
-                sceneEl.removeAttribute('background');
+        const sceneEl = document.querySelector('a-scene');
+
+        // This logic detects how the user entered the scene
+        sceneEl.addEventListener('enter-vr', function () {
+            if (sceneEl.is('ar-mode')) {
+                console.log("Entered AR Mode");
+                setMode('ar');
             } else {
-                // Restore the black void
-                sceneEl.setAttribute('background', 'color: #000');
+                console.log("Entered VR Mode");
+                setMode('vr');
+            }
+        });
+
+        function setMode(mode) {
+            if (mode === 'ar') {
+                // Transparency allows the Quest camera feed to show
+                sceneEl.removeAttribute('background');
+                // Optional: Make keys slightly transparent to see real fingers better
+                document.getElementById('keys').setAttribute('opacity', '0.8');
+            } else {
+                // Restore the pitch-black VR environment
+                sceneEl.setAttribute('background', 'color: #010102');
+                document.getElementById('keys').setAttribute('opacity', '1.0');
             }
         }
 
-        // Ensuring the system attempts AR session on start
-        document.querySelector('a-scene').addEventListener('enter-vr', () => {
-            const sceneEl = document.querySelector('a-scene');
-            // If the user entered using the AR button, we clear the background immediately
-            if (sceneEl.is('ar-mode')) {
-                setPassthrough(true);
-            }
-        });
+        function exitSession() {
+            sceneEl.exitVR();
+        }
 
         function buildKeys() {
             let curX = 0;
@@ -81,8 +100,7 @@
                 k.setAttribute('width', isB ? 0.045 : 0.08);
                 k.setAttribute('height', isB ? 0.12 : 0.08);
                 k.setAttribute('depth', isB ? 0.4 : 0.7);
-                // In AR, 'flat' shaders look much better because they don't depend on room lighting
-                k.setAttribute('material', `shader: flat; color: ${isB ? '#111' : '#fff'}; opacity: 0.9;`);
+                k.setAttribute('material', `shader: flat; color: ${isB ? '#111' : '#fff'}`);
                 k.setAttribute('position', `${curX} 0 ${isB ? -0.15 : 0}`);
                 keysEl.appendChild(k);
                 if(!isB) curX += 0.085;
