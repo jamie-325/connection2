@@ -2,50 +2,40 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Virtuoso VR - Passthrough Edition</title>
+    <title>Piano AR - Passthrough Fix</title>
     <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
-    <style>
-        body { margin: 0; overflow: hidden; background: #000; }
-        #desktop-ui { 
-            position: absolute; top: 10px; left: 10px; z-index: 100; 
-            background: rgba(0,0,0,0.8); padding: 10px; border: 1px solid #39FF14;
-            color: white; pointer-events: auto;
-        }
-    </style>
+    <script src="https://unpkg.com/aframe-event-set-component@5.0.0/dist/aframe-event-set-component.min.js"></script>
 </head>
 <body>
 
-    <div id="desktop-ui">
-        <button onclick="togglePassthrough()">Toggle Passthrough (Desktop Test)</button>
-    </div>
-
     <a-scene 
-        id="mainScene"
-        background="color: #010102" 
-        renderer="alpha: true; colorManagement: true;"
-        xr-mode-ui="enabled: true">
+        webxr="optionalFeatures: passthrough, local-floor; overlayElement: #desktop-ui"
+        background="color: #010102"
+        renderer="alpha: true; antialias: true;">
         
         <a-assets>
             <a-mixin id="vr-btn" 
-                     geometry="primitive: plane; width: 0.6; height: 0.2" 
+                     geometry="primitive: plane; width: 0.6; height: 0.22" 
                      material="color: #111; shader: flat"
+                     event-set__mouseenter="material.color: #39FF14"
+                     event-set__mouseleave="material.color: #111"
                      text="align: center; width: 2.5; color: white"></a-mixin>
         </a-assets>
 
+        <a-entity laser-controls="hand: left" raycaster="objects: .clickable; far: 20"></a-entity>
         <a-entity laser-controls="hand: right" raycaster="objects: .clickable; far: 20"></a-entity>
 
         <a-entity id="vr-menu" position="-3.5 1.5 -3.0" rotation="0 70 0">
-            <a-text value="ENVIRONMENT" position="0 0.4 0" align="center" color="#39FF14"></a-text>
+            <a-text value="REALITY SETTINGS" position="0 0.8 0" align="center" color="#39FF14" width="6"></a-text>
             
-            <a-entity id="passthrough-btn" class="clickable" mixin="vr-btn" 
-                      position="0 0.1 0" 
-                      text="value: TOGGLE PASSTHROUGH" 
-                      onclick="togglePassthrough()"></a-entity>
+            <a-entity class="clickable" mixin="vr-btn" position="0 0.4 0" 
+                      text="value: TOGGLE PASSTHROUGH" onclick="toggleVRAR()"></a-entity>
 
-            <a-entity class="clickable" mixin="vr-btn" position="0 -0.2 0" text="value: C MAJOR" onclick="selectScale('cMajor')"></a-entity>
+            <a-entity class="clickable" mixin="vr-btn" position="0 0.1 0" text="value: C MAJOR" onclick="selectScale('cMajor')"></a-entity>
+            <a-entity class="clickable" mixin="vr-btn" position="0 -0.8 0" material="color: #500" text="value: STOP" onclick="stopAll()"></a-entity>
         </a-entity>
 
-        <a-entity id="piano-rig" position="0 0.5 -1.5">
+        <a-entity id="piano-rig" position="0 0.5 -1.8">
             <a-entity id="rolls"></a-entity>
             <a-entity id="keys"></a-entity>
         </a-entity>
@@ -54,48 +44,47 @@
     </a-scene>
 
     <script>
-        let isPassthroughOn = false;
+        let isAR = false;
 
-        function togglePassthrough() {
+        function toggleVRAR() {
             const sceneEl = document.querySelector('a-scene');
-            const btn = document.querySelector('#passthrough-btn');
-            
-            isPassthroughOn = !isPassthroughOn;
+            isAR = !isAR;
 
-            if (isPassthroughOn) {
-                // 1. Hide the background color
+            if (isAR) {
+                // 1. Make the virtual sky invisible so the camera feed shows through
                 sceneEl.setAttribute('background', 'transparent', true);
-                // 2. Set the renderer to alpha (for WebXR AR mode)
-                sceneEl.setAttribute('renderer', 'alpha', true);
                 
-                // For Meta Quest Browser specifically:
-                if (sceneEl.systems.webxr) {
-                    sceneEl.setAttribute('webxr', 'optionalFeatures: passthrough;');
+                // 2. Request the Meta Quest hardware to start passthrough
+                if (sceneEl.xrSession) {
+                    sceneEl.xrSession.requestReferenceSpace('local').then((refSpace) => {
+                        // This internal Meta command triggers the passthrough layer
+                        sceneEl.setAttribute('webxr', 'optionalFeatures: passthrough;');
+                    });
                 }
-                
-                console.log("Passthrough Active");
+                console.log("Entering Passthrough Mode");
             } else {
-                // Return to the black void
+                // Return to Black VR Void
                 sceneEl.setAttribute('background', 'color: #010102');
-                console.log("Passthrough Disabled");
+                console.log("Returning to VR Mode");
             }
         }
 
-        // Standard Keyboard logic (Keep your previous functions here)
+        // Standard Key Builder (Ensuring visibility)
         function buildKeys() {
-            const keysEl = document.getElementById('keys');
             let curX = 0;
+            const keysEl = document.getElementById('keys');
             for(let n=21; n<=108; n++) {
                 const isB = [1,3,6,8,10].includes(n%12);
                 const k = document.createElement('a-box');
                 k.setAttribute('width', isB ? 0.045 : 0.08);
                 k.setAttribute('height', isB ? 0.12 : 0.08);
                 k.setAttribute('depth', isB ? 0.4 : 0.7);
-                k.setAttribute('color', isB ? '#111' : '#fff');
+                k.setAttribute('material', 'shader: flat; color: ' + (isB ? '#111' : '#fff'));
                 k.setAttribute('position', `${curX} 0 ${isB ? -0.15 : 0}`);
                 keysEl.appendChild(k);
                 if(!isB) curX += 0.085;
             }
+            keysEl.setAttribute('position', `${-(curX/2)} 0 0`);
         }
 
         window.onload = buildKeys;
